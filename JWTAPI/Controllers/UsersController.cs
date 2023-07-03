@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using JWTAPI.Models;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Azure.Core.Pipeline;
 
 namespace JWTAPI.Controllers
 {
@@ -18,6 +21,14 @@ namespace JWTAPI.Controllers
         public UsersController(DBJWTAPIContext context)
         {
             _context = context;
+        }
+
+        [HttpGet("Admin")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult AdminEndpoint()
+        {
+            var currentUser = GetCurrentUser();
+            return Ok($"hi {currentUser.Username}, you are an admin");
         }
 
         // GET: api/Users
@@ -119,6 +130,23 @@ namespace JWTAPI.Controllers
         private bool UserExists(int id)
         {
             return (_context.Users?.Any(e => e.Id == id)).GetValueOrDefault();
+        }
+
+        private User? GetCurrentUser()
+        {
+            var identity = HttpContext.User.Identity as ClaimsIdentity;
+            if (identity != null)
+            {
+                var userClaims = identity.Claims;
+                return new User
+                {
+                    Username = identity.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value,
+                    IsActive = true,
+                    IsAdmin = (identity.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value == "Admin") ? true : false,
+                    Bio = identity.Claims.FirstOrDefault(c => c.Type == ClaimTypes.UserData)?.Value
+                };
+            }
+            return null;
         }
     }
 }

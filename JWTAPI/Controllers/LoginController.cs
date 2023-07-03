@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -16,16 +17,17 @@ namespace JWTAPI.Controllers
     [ApiController]
     public class LoginController : ControllerBase
     {
-        private readonly DBJWTAPIContext _context;
+        //private readonly DBJWTAPIContext _context;
+        private readonly UserConstants _context;
         private IConfiguration _config;
-        public LoginController(DBJWTAPIContext context, IConfiguration config)
+        public LoginController(IConfiguration config)
         {
-            _context = context;
             _config = config;
+            _context = new UserConstants();
         }
         [AllowAnonymous]
         [HttpPost]
-        public IActionResult Login(UserLoginRequest userLogin)
+        public IActionResult Login([FromBody] UserLoginRequest userLogin)
         {
             User? user = Authenticate(userLogin);
 
@@ -35,10 +37,16 @@ namespace JWTAPI.Controllers
             }
 
             string token = Generate(user);
-            return Ok(token);
+
+            return Ok(new
+            {
+                access_token = token,
+                expires_in = DateTime.UtcNow.AddMinutes(15.0),
+                type = "bearer"
+            });
         }
 
-        private string Generate(User user)
+        private string Generate(User user)// same as craeteAccessToken()
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -46,7 +54,7 @@ namespace JWTAPI.Controllers
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Username),
                 new Claim(ClaimTypes.Role, user.IsAdmin?"Admin":"User"),
-                new Claim(ClaimTypes.UserData, user.Bio)
+                new Claim("Bio", user.Bio)
             };
             var token = new JwtSecurityToken(
                 _config["Jwt:Issuer"],
@@ -55,7 +63,8 @@ namespace JWTAPI.Controllers
                 expires: DateTime.Now.AddMinutes(15),
                 signingCredentials: credentials
                 );
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            var rawToken = new JwtSecurityTokenHandler().WriteToken(token);
+            return rawToken;
         }
 
         private User? Authenticate(UserLoginRequest userLogin)
